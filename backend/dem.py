@@ -91,6 +91,25 @@ class DEM:
                    self.synthetic, self.label, self.meta)
 
 
+def from_proj_south_polar(z_std: np.ndarray, px_m: float, label: str = "") -> DEM:
+    """Convert an array in the common PROJ south-polar-stereographic orientation to this
+    project's internal grid convention (x = rho*cos(lon), y = rho*sin(lon)).
+
+    ASSUMPTION (verify against your data product): the source grid has the pole at the exact
+    centre of a square array, columns increasing with x = rho*sin(lon), rows increasing with
+    -y where y = rho*cos(lon), and longitude is east-positive. Under that assumption the two
+    grids differ by a flip of both axes plus a transpose. If your product uses another
+    convention, horizons will be rotated or mirrored, so ALWAYS check a few landmarks
+    (see README.md).
+    """
+    z_std = np.asarray(z_std)
+    if z_std.ndim != 2 or z_std.shape[0] != z_std.shape[1] or z_std.shape[0] % 2 == 0:
+        raise ValueError("expected a square array with an odd side length, pole at the centre")
+    z = np.ascontiguousarray(z_std[::-1, ::-1].T).astype(np.float32)
+    c = (z.shape[0] - 1) / 2.0
+    return DEM(z, px_m, c, c, synthetic=False, label=label or "converted from PROJ south polar grid")
+
+
 def synthetic_dem(size_px: int = 1000, px_m: float = 100.0, seed: int = 7) -> DEM:
     """Fractal terrain + craters + massifs, centred on the south pole. NOT REAL DATA."""
     rng = np.random.default_rng(seed)
