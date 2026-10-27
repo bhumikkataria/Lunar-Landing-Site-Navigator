@@ -109,6 +109,69 @@ class Service:
         return {"series": ser, "classified": c, "metrics": metrics(c["power"], c["comms"], ser["step_h"]),
                 "horizon": (az, hor)}
 
+    # --------------------------------------------------------------- windows
+    def windows(self, site_id, start, end, duration_h, objective="balanced", battery_h=None,
+                height_m=0.0, step_h=1.0, top_n=3, uncertainty=True, mc_n=30,
+                sigma_m=8.0, corr_m=500.0) -> dict:
+        if objective not in OBJECTIVES:
+            raise ServiceError(f"objective must be one of {list(OBJECTIVES)}")
+        if objective == "survive" and battery_h is None:
+            raise ServiceError("objective 'survive' needs battery_h")
+        v = self.visibility(site_id, start, end, step_h, height_m)
+        ser, c = v["series"], v["classified"]
+        if duration_h > len(ser["times"]) * ser["step_h"]:
+            raise ServiceError("mission duration is longer than the selected date range")
+        wins = find_windows(ser["times"], c["power"], c["comms"], duration_h, ser["step_h"],
+                            objective, battery_h, top_n)
+        if uncertainty and wins:
+            mc = self._mc_for(site_id, ser, height_m, mc_n, sigma_m, corr_m)
+            for w in wins:
+                w["uncertainty"] = window_uncertainty(mc, w["start_index"], w["end_index"], ser["step_h"])
+        info = horizon_info(self.dem, self.site(site_id).lat, self.site(site_id).lon, RMAX_M)
+        return {"site_id": site_id, "windows": wins, "objective": objective, "battery_h": battery_h,
+                "duration_h": duration_h, "height_m": height_m, "overall": v["metrics"],
+                "data_notes": info, "n_samples": len(ser["times"]), "step_h": ser["step_h"]}
+
+    def _mc_for(self, site_id, ser, height_m, mc_n, sigma_m, corr_m):
+        key = (site_id, str(ser["times"][0]), len(ser["times"]), ser["step_h"], float(height_m),
+               mc_n, sigma_m, corr_m)
+        if key not in self._mc:
+            s = self.site(site_id)
+            self._mc[key] = mc_visibility(self.dem, s.lat, s.lon, ser, height_m, mc_n,
+                                          sigma_m, corr_m, rmax_m=RMAX_M)
+        return self._mc[key]
+
+    def window_probability(self, site_id, start, end, duration_h, rank=0, **kw) -> dict:
+        """Hourly P(both) across terrain realizations for the rank-th window (for confidence bands)."""
+        kw = dict(kw)
+        kw["uncertainty"] = True
+        res = self.windows(site_id, start, end, duration_h, **kw)
+        if not res["windows"]:
+            raise ServiceError("no window found")
+        ser = self.series(site_id, start, end, kw.get("step_h", 1.0))
+        mc = self._mc_for(site_id, ser, kw.get("height_m", 0.0), kw.get("mc_n", 30),
+                          kw.get("sigma_m", 8.0), kw.get("corr_m", 500.0))
+        prob = hourly_probability(mc)
+        w = res["windows"][min(rank, len(res["windows"]) - 1)]
+        sl = slice(w["start_index"], w["end_index"])
+        return {"window": w, "times": [str(t) for t in ser["times"][sl]],
+                "p_both": np.round(prob["p_both"][sl], 3).tolist(),
+                "p_power": np.round(prob["p_power"][sl], 3).tolist(),
+                "p_comms": np.round(prob["p_comms"][sl], 3).tolist()}
+
+    # ---------------------------------------------------------------- height
+    def height(self, site_id, start, end, heights=None, window_start=None, window_end=None,
+               step_h=1.0) -> dict:
+        ser = self.series(site_id, start, end, step_h)
+        s = self.site(site_id)
+        sl = None
+        if window_start is not None and window_end is not None:
+            sl = slice(int(window_start), int(window_end))
+        out = height_sweep(self.dem, s.lat, s.lon, ser, tuple(heights or DEFAULT_HEIGHTS_M),
+                           sl, RMAX_M, 1.0, ser["step_h"])
+        out["site_id"] = site_id
+        return out
+
     # ------------------------------------------------------------ transport
     def series_payload(self, site_ids, start, end, step_h=1.0, height_m=0.0) -> dict:
         out = {"sites": {}, "code_names": CODE_NAMES}
