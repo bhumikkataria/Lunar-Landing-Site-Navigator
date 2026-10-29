@@ -268,6 +268,79 @@
     ctx.textAlign = "left";
   }
 
-    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand, drawHeight };
+  /* ----------------------------------------------------- first-person view */
+  const STARS = L.starField(160, 7);
+
+  function drawPano(ctx, W, H, site, tIdx, o) {
+    const heading = o.heading, fov = o.fov, stretch = o.stretch || 1;
+    const pxDeg = W / fov;
+    const y0 = H * 0.74;
+    const yOf = (el) => y0 - el * pxDeg * stretch;
+    ctx.fillStyle = skyGradient(ctx, H);
+    ctx.fillRect(0, 0, W, H);
+    for (const s of STARS) {
+      ctx.fillStyle = "rgba(255,255,255," + s.a + ")";
+      ctx.fillRect(s.x * W, s.y * y0, s.r, s.r);
+    }
+
+    const bodies = [
+      { az: site.earth_az[tIdx], el: site.earth_el[tIdx], rDeg: 0.95, kind: "earth" },
+      { az: site.sun_az[tIdx], el: site.sun_el[tIdx], rDeg: 0.27, kind: "sun" },
+    ];
+    for (const b of bodies) {
+      const bx = L.pxFromAz(b.az, heading, fov, W);
+      const by = yOf(b.el);
+      const r = Math.max(3, b.rDeg * pxDeg * (o.enlarge ? 3 : 1));
+      if (bx < -r * 4 || bx > W + r * 4) continue;
+      if (b.kind === "sun") {
+        const g = ctx.createRadialGradient(bx, by, r * 0.4, bx, by, r * 4);
+        g.addColorStop(0, "rgba(255,226,140,0.55)");
+        g.addColorStop(1, "rgba(255,226,140,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(bx, by, r * 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#fff4cf";
+      } else {
+        const g = ctx.createRadialGradient(bx - r * 0.3, by - r * 0.3, r * 0.2, bx, by, r);
+        g.addColorStop(0, "#d6e6ff");
+        g.addColorStop(1, "#3f73c7");
+        ctx.fillStyle = g;
+      }
+      ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // terrain silhouette across the view
+    const azs = site.horizon_az, hor = site.horizon_el;
+    const steps = Math.min(W, 720);
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let k = 0; k <= steps; k++) {
+      const px = (k / steps) * W;
+      const az = heading + (px - W / 2) / pxDeg;
+      ctx.lineTo(px, yOf(L.horizonAt(azs, hor, az)));
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, y0 - 40, 0, H);
+    g.addColorStop(0, "#77746d");
+    g.addColorStop(1, "#1f2023");
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // compass along the bottom
+    ctx.font = FONT;
+    ctx.textAlign = "center";
+    const names = { 0: "N", 45: "NE", 90: "E", 135: "SE", 180: "S", 225: "SW", 270: "W", 315: "NW" };
+    for (let a = 0; a < 360; a += 15) {
+      const px = L.pxFromAz(a, heading, fov, W);
+      if (px < 10 || px > W - 10) continue;
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.beginPath(); ctx.moveTo(px, H - 20); ctx.lineTo(px, H - (names[a] ? 12 : 16)); ctx.stroke();
+      ctx.fillStyle = names[a] ? "#e8eaee" : "#9aa3b2";
+      ctx.fillText(names[a] || a + "°", px, H - 3);
+    }
+    ctx.textAlign = "left";
+  }
+
+    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand, drawHeight, drawPano };
   if (typeof module !== "undefined" && module.exports) module.exports = Draw; else root.Draw = Draw;
 })(typeof window !== "undefined" ? window : globalThis);
