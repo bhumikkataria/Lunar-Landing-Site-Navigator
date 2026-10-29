@@ -181,6 +181,54 @@
     ctx.textAlign = "left";
   }
 
-    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX };
+  /* --------------------------------------------------------- light-panel chart frame */
+  function frame(ctx, W, H, pad, yLabel) {
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = FONT;
+    ctx.lineWidth = 1;
+    for (const v of [0, 25, 50, 75, 100]) {
+      const yy = pad.t + (1 - v / 100) * (H - pad.t - pad.b);
+      ctx.strokeStyle = RULE;
+      ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(W - pad.r, yy); ctx.stroke();
+      ctx.fillStyle = MUTED;
+      ctx.textAlign = "right";
+      ctx.fillText(v + "%", pad.l - 6, yy + 4);
+    }
+    ctx.textAlign = "left";
+    if (yLabel) { ctx.fillStyle = MUTED; ctx.fillText(yLabel, pad.l, 12); }
+  }
+
+  /* ------------------------------------------------- confidence band for one window */
+  function drawBand(ctx, W, H, prob) {
+    const pad = { l: 46, r: 12, t: 22, b: 24 };
+    frame(ctx, W, H, pad, "Share of terrain variations in which it holds");
+    const n = prob.p_both.length;
+    if (!n) return;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    const x = (i) => pad.l + (i / Math.max(1, n - 1)) * pw;
+    const y = (p) => pad.t + (1 - p) * ph;
+    const line = (arr, color, wd) => {
+      ctx.strokeStyle = color; ctx.lineWidth = wd; ctx.beginPath();
+      arr.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p)) : ctx.moveTo(x(i), y(p))));
+      ctx.stroke();
+    };
+    ctx.beginPath();
+    prob.p_both.forEach((p, i) => (i ? ctx.lineTo(x(i), y(p)) : ctx.moveTo(x(i), y(p))));
+    ctx.lineTo(x(n - 1), y(0)); ctx.lineTo(x(0), y(0)); ctx.closePath();
+    ctx.fillStyle = "rgba(31,157,107,0.22)";
+    ctx.fill();
+    line(prob.p_power, LIGHT_LINES.power, 1);
+    line(prob.p_comms, LIGHT_LINES.comms, 1);
+    line(prob.p_both, LIGHT_LINES.both, 2);
+    ctx.fillStyle = MUTED;
+    ctx.textAlign = "left";
+    ctx.fillText(L.fmtDate(prob.times[0]), pad.l, H - 7);
+    ctx.textAlign = "right";
+    ctx.fillText(L.fmtDate(prob.times[n - 1]), W - pad.r, H - 7);
+    ctx.textAlign = "left";
+  }
+
+    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand };
   if (typeof module !== "undefined" && module.exports) module.exports = Draw; else root.Draw = Draw;
 })(typeof window !== "undefined" ? window : globalThis);
