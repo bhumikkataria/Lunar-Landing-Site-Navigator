@@ -341,6 +341,7 @@
     ctx.textAlign = "left";
   }
 
-    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand, drawHeight, drawPano };
+  const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand,
+    drawHeight, drawPano };
   if (typeof module !== "undefined" && module.exports) module.exports = Draw; else root.Draw = Draw;
 })(typeof window !== "undefined" ? window : globalThis);
