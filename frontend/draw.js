@@ -121,6 +121,66 @@
     ctx.textAlign = "left";
   }
 
-    const Draw = { drawEmpty, drawHorizon };
+  /* -------------------------------------------------------------------- timeline */
+  const TL = { left: 92, right: 10, top: 20, rowH: 22, gap: 6 };
+  const timelineHeight = (rows) => TL.top + rows * (TL.rowH + TL.gap) + 6;
+  function timelineIndexFromX(px, W, n) {
+    const pw = W - TL.left - TL.right;
+    return L.clamp(Math.floor(((px - TL.left) / pw) * n), 0, n - 1);
+  }
+
+  function drawTimeline(ctx, W, H, sites, tIdx, highlight) {
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, W, H);
+    if (!sites.length) return;
+    const n = sites[0].times.length;
+    const pw = W - TL.left - TL.right;
+    ctx.font = FONT;
+
+    // date ticks
+    const ticks = Math.max(2, Math.floor(pw / 120));
+    ctx.fillStyle = MUTED;
+    ctx.textAlign = "left";
+    for (let k = 0; k <= ticks; k++) {
+      const i = Math.min(n - 1, Math.round((k / ticks) * (n - 1)));
+      const px = TL.left + (i / n) * pw;
+      ctx.strokeStyle = RULE;
+      ctx.beginPath(); ctx.moveTo(px, TL.top - 4); ctx.lineTo(px, TL.top); ctx.stroke();
+      ctx.textAlign = k === ticks ? "right" : "left";
+      ctx.fillText(L.fmtDate(sites[0].times[i]), px, TL.top - 7);
+    }
+
+    sites.forEach((s, r) => {
+      const y0 = TL.top + r * (TL.rowH + TL.gap);
+      ctx.fillStyle = INK;
+      ctx.textAlign = "left";
+      const label = s.site.name.length > 12 ? s.site.name.slice(0, 11) + "…" : s.site.name;
+      ctx.fillText(label, 6, y0 + TL.rowH / 2 + 4);
+      const w = Math.max(1, pw / n + 0.6);
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = L.CODE_COLORS[s.code[i]];
+        ctx.fillRect(TL.left + (i / n) * pw, y0, w, TL.rowH);
+      }
+      if (highlight && highlight.siteId === s.site.id) {
+        const a = TL.left + (highlight.start / n) * pw;
+        const b = TL.left + (highlight.end / n) * pw;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(a, y0 - 2, Math.max(2, b - a), TL.rowH + 4);
+        ctx.lineWidth = 1;
+      }
+    });
+
+    const sx = TL.left + ((tIdx + 0.5) / n) * pw;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(sx, TL.top); ctx.lineTo(sx, H - 4); ctx.stroke();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(sx, TL.top); ctx.lineTo(sx, H - 4); ctx.stroke();
+    ctx.textAlign = "left";
+  }
+
+    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX };
   if (typeof module !== "undefined" && module.exports) module.exports = Draw; else root.Draw = Draw;
 })(typeof window !== "undefined" ? window : globalThis);
