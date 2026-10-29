@@ -229,6 +229,45 @@
     ctx.textAlign = "left";
   }
 
-    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand };
+  /* --------------------------------------------------------- mast height trade-off */
+  function drawHeight(ctx, W, H, hs) {
+    const pad = { l: 46, r: 60, t: 22, b: 30 };
+    frame(ctx, W, H, pad, "Share of the window");
+    const rows = hs.rows;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    const hmax = Math.max(1, rows[rows.length - 1].height_m);
+    const x = (h) => pad.l + (h / hmax) * pw;
+    const y = (p) => pad.t + (1 - p / 100) * ph;
+    const series = [["both_pct", LIGHT_LINES.both, "both"], ["power_pct", LIGHT_LINES.power, "power"],
+      ["comms_pct", LIGHT_LINES.comms, "comms"]];
+
+    const j = hs.biggest_jumps.both_pct;
+    if (j && j.is_flip) {
+      ctx.fillStyle = "rgba(29,32,36,0.08)";
+      ctx.fillRect(x(j.from_height_m), pad.t, x(j.to_height_m) - x(j.from_height_m), ph);
+    }
+    for (const [key, color, name] of series) {
+      ctx.strokeStyle = color; ctx.lineWidth = key === "both_pct" ? 2.5 : 1.5;
+      ctx.beginPath();
+      rows.forEach((r, i) => (i ? ctx.lineTo(x(r.height_m), y(r[key])) : ctx.moveTo(x(r.height_m), y(r[key]))));
+      ctx.stroke();
+      ctx.fillStyle = color;
+      rows.forEach((r) => { ctx.beginPath(); ctx.arc(x(r.height_m), y(r[key]), 3, 0, Math.PI * 2); ctx.fill(); });
+      const last = rows[rows.length - 1];
+      ctx.textAlign = "left";
+      ctx.fillText(name, x(last.height_m) + 8, y(last[key]) + 4);
+    }
+    ctx.fillStyle = MUTED;
+    ctx.textAlign = "center";
+    for (const r of rows) ctx.fillText(r.height_m + " m", x(r.height_m), H - 10);
+    if (j && j.is_flip) {
+      ctx.fillStyle = INK;
+      ctx.textAlign = "left";
+      ctx.fillText("+" + Math.round(j.jump_pct) + " points", x(j.to_height_m) + 6, pad.t + 14);
+    }
+    ctx.textAlign = "left";
+  }
+
+    const Draw = { drawEmpty, drawHorizon, drawTimeline, timelineHeight, timelineIndexFromX, drawBand, drawHeight };
   if (typeof module !== "undefined" && module.exports) module.exports = Draw; else root.Draw = Draw;
 })(typeof window !== "undefined" ? window : globalThis);
