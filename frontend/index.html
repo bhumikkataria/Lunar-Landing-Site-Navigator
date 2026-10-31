@@ -65,6 +65,25 @@
     </form>
 
     <div class="stage">
+      <section class="panel copilot" aria-labelledby="askTitle">
+        <h2 id="askTitle">Ask in plain English</h2>
+        <form id="askForm">
+          <label for="ask" class="sr-only">Your question</label>
+          <textarea id="ask" rows="2" maxlength="1000"
+            placeholder="Which site can survive a 10-day mission in March with a 60-hour battery?"></textarea>
+          <div class="ask-row">
+            <div id="examples" class="examples"></div>
+            <button id="askGo" class="btn primary" type="submit">Ask</button>
+          </div>
+        </form>
+        <div id="answer" class="answer" hidden aria-live="polite">
+          <p id="answerText" class="answer-text"></p>
+          <p id="verify" class="verify"></p>
+          <div id="assumed" class="assumed"></div>
+          <details id="trace" class="trace"></details>
+        </div>
+      </section>
+
       <section class="panel sky" aria-labelledby="skyTitle">
         <div class="panel-head">
           <h2 id="skyTitle">The sky above the terrain</h2>

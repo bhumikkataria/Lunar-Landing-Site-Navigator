@@ -339,6 +339,61 @@
     renderDetail(); renderMast(); renderPano();
   }
 
+  /* --------------------------------------------------------------- copilot */
+  const EXAMPLES = [
+    "Which site is best for a 14-day mission in March, power first?",
+    "Can we survive a 10-day mission with a 60-hour battery?",
+    "Compare sites a and b with a 5 m mast for 7 days",
+  ];
+
+  async function ask(message) {
+    const btn = $("#askGo");
+    btn.disabled = true; btn.textContent = "Thinking…"; toast("");
+    try {
+      const r = await api("/api/copilot", { message, mode: mode() });
+      renderAnswer(r);
+      await applyView(r);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Ask";
+    }
+  }
+
+  function renderAnswer(r) {
+    $("#answer").hidden = false;
+    $("#answerText").textContent = r.explanation.text;
+    const v = r.verification, ver = $("#verify");
+    ver.className = "verify " + (v.verified ? "ok" : "bad");
+    ver.textContent = v.verified
+      ? "Checked against the data: " + v.numbers_checked + " numbers and " + v.dates_checked + " dates, all supported. " +
+        (r.explanation.source === "llm" ? "Written by a language model, then verified." : "Written from a template, then verified.")
+      : "Not fully verified: " + [...v.unmatched_numbers, ...v.unbacked_dates, ...v.unknown_sites, ...v.unbacked_labels].join(", ");
+    const as = $("#assumed");
+    as.replaceChildren();
+    if (r.assumptions.length) {
+      as.append(h("p", { text: "What I assumed:" }), h("ul", {}, r.assumptions.map((a) => h("li", { text: a }))));
+    }
+    const tr = $("#trace");
+    tr.replaceChildren(h("summary", { text: "How this answer was produced (" + r.trace.length + " steps)" }),
+      h("ol", {}, r.trace.map((t) => h("li", {}, h("strong", { text: t.agent }), " " + t.action + " in " + t.ms + " ms ",
+        h("code", { text: JSON.stringify(t.detail) })))));
+  }
+
+  function applyView(r) {
+    const v = r.view;
+    for (const box of $$("#siteChips input")) box.checked = v.site_ids.includes(box.value);
+    $("#start").value = v.start; $("#end").value = v.end;
+    $("#durDays").value = +(v.duration_h / 24).toFixed(2);
+    $("#objective").value = v.objective;
+    $("#batteryRow").hidden = v.objective !== "survive";
+    if (v.battery_h != null) $("#battery").value = v.battery_h;
+    $("#mast").value = Math.min(15, Math.round(v.height_m));
+    $("#mastOut").textContent = $("#mast").value + " m";
+    const top = r.ranking[0];
+    return refresh(top ? { siteId: top.site_id, start: top.start_iso } : null);
+  }
+
   /* ----------------------------------------------------------------- wiring */
   function download(name, blob) {
     const a = h("a", { href: URL.createObjectURL(blob), download: name });
@@ -392,6 +447,14 @@
       renderPano();
     }, { passive: false });
     for (const id of ["#fov", "#stretch", "#enlarge"]) $(id).addEventListener("input", renderPano);
+
+    $("#askForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const m = $("#ask").value.trim();
+      if (!m) { toast("Type a question first, or pick one of the examples."); return; }
+      ask(m);
+    });
+    $("#examples").append(...EXAMPLES.map((t) => h("button", { type: "button", onclick: () => { $("#ask").value = t; $("#ask").focus(); } }, t)));
 
     $("#csv").addEventListener("click", () => {
       const s = focusSite(); if (!s) return;

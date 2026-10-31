@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..orchestrator import run_copilot
 from ..service import Service, ServiceError
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -72,12 +73,21 @@ def h_height(svc, b):
                       b.get("window_start"), b.get("window_end"), float(b.get("step_h", 1.0)))
 
 
+def h_copilot(svc, b):
+    msg = str(b.get("message", "")).strip()
+    if not msg:
+        raise ServiceError("type a question first")
+    mode = b.get("mode") if b.get("mode") in ("planner", "public") else "planner"
+    return run_copilot(svc, msg, mode)
+
+
 ROUTES = {
     ("GET", "/api/meta"): h_meta,
     ("POST", "/api/series"): h_series,
     ("POST", "/api/windows"): h_windows,
     ("POST", "/api/window_probability"): h_window_prob,
     ("POST", "/api/height"): h_height,
+    ("POST", "/api/copilot"): h_copilot,
 }
 
 
