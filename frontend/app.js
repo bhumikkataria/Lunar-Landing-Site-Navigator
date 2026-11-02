@@ -25,7 +25,7 @@
   const S = {
     meta: null, data: {}, order: [], windows: {}, focus: null, n: 0, tIdx: 0,
     sel: null, highlight: null, prob: null, height: null, token: 0,
-    last: null, timer: null, heading: 0, tab: "windows", raf: 0,
+    last: null, timer: null, heading: 0, tab: "windows", raf: 0, last3dSite: null,
   };
 
   /* ------------------------------------------------------------------ plumbing */
@@ -77,6 +77,25 @@
     if (!s) { D.drawEmpty(z.ctx, z.W, z.H, "Choose sites and press Compare sites", true); return; }
     D.drawHorizon(z.ctx, z.W, z.H, s, S.tIdx);
     c.setAttribute("aria-label", "Horizon plot for " + s.site.name + ". " + L.describeSite(s));
+    renderScene3D();
+  }
+
+  let scene3dInited = false;
+  function renderScene3D() {
+    const s = focusSite();
+    if (!s) return;
+    if (typeof window !== "undefined" && window.Scene3D && typeof window.Scene3D.init === "function") {
+      if (!scene3dInited) {
+        scene3dInited = window.Scene3D.init("scene3dWrap");
+      }
+      if (scene3dInited) {
+        if (S.last3dSite !== s.site.id) {
+          window.Scene3D.setSite(s);
+          S.last3dSite = s.site.id;
+        }
+        window.Scene3D.update(s, S.tIdx);
+      }
+    }
   }
 
   function renderTimeline() {
@@ -447,6 +466,22 @@
       renderPano();
     }, { passive: false });
     for (const id of ["#fov", "#stretch", "#enlarge"]) $(id).addEventListener("input", renderPano);
+
+    ["#camTactical", "#camPov", "#camPolar"].forEach((id) => {
+      const el = $(id);
+      if (el) {
+        el.addEventListener("click", () => {
+          ["#camTactical", "#camPov", "#camPolar"].forEach((i) => {
+            const b = $(i);
+            if (b && b.classList) b.classList.remove("active");
+          });
+          if (el.classList) el.classList.add("active");
+          if (typeof window !== "undefined" && window.Scene3D && window.Scene3D.setCamera) {
+            window.Scene3D.setCamera(el.dataset.cam || el.getAttribute("data-cam"));
+          }
+        });
+      }
+    });
 
     $("#askForm").addEventListener("submit", (e) => {
       e.preventDefault();

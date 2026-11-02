@@ -92,8 +92,28 @@
             <select id="focus"></select>
           </div>
         </div>
+
+        <div id="scene3dWrap" class="scene3d-container">
+          <canvas id="scene3d"></canvas>
+          <div class="hud-overlay">
+            <div class="hud-top">
+              <div id="hudSite" class="hud-site">LUNAR SOUTH POLE</div>
+              <div id="hudTime" class="hud-time">2027-01-01 00:00 UTC</div>
+            </div>
+            <div class="hud-bottom">
+              <div class="hud-chips">
+                <span id="hudSun" class="hud-chip ok">☀ SUN +0.0° CLEAR</span>
+                <span id="hudEarth" class="hud-chip ok">🌍 DTE +0.0° LINK OK</span>
+              </div>
+              <div id="hudStatus" class="hud-status both">NOMINAL: POWER + DTE COMMS</div>
+            </div>
+          </div>
+        </div>
+        <p class="caption">3D mission-control dome scaffold. Terrain extrusion, sightlines, and celestial bodies arrive in the next steps. Drag to orbit, scroll to zoom.</p>
+
+        <h3 class="sub-head-sky">2D Horizon Skyline & Ephemeris Chart</h3>
         <canvas id="horizon" role="img" aria-label="Horizon plot"></canvas>
-        <p class="caption">The grey shape is the terrain skyline seen from the site. Yellow dots trace where the Sun goes over your dates, blue dots Earth. A body above the skyline can be seen from the lander; a dashed outline means terrain hides it.</p>
+        <p class="caption">The grey shape is the terrain skyline seen from the site. Glowing curves trace where the Sun and Earth travel across the sky. Bodies above the skyline have clear line-of-sight.</p>
         <div class="scrub">
           <label for="scrub" class="sr-only">Time within the search range</label>
           <input id="scrub" type="range" min="0" max="0" value="0">
@@ -147,6 +167,9 @@
     </div>
   </div>
 
+  <script src="/static/three.min.js"></script>
+  <script src="/static/OrbitControls.js"></script>
+  <script src="/static/scene3d.js"></script>
   <script src="/static/lib.js"></script>
   <script src="/static/draw.js"></script>
   <script src="/static/app.js"></script>
