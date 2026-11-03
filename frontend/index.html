@@ -88,6 +88,11 @@
         <div class="panel-head">
           <h2 id="skyTitle">The sky above the terrain</h2>
           <div class="inline">
+            <div id="camPresets" class="cam-presets">
+              <button type="button" id="camPov" class="btn-cam active" data-cam="pov">👨‍🚀 Lander POV</button>
+              <button type="button" id="camTactical" class="btn-cam" data-cam="tactical">🛰 3D Orbit</button>
+              <button type="button" id="camPolar" class="btn-cam" data-cam="polar">🧭 Top-Down</button>
+            </div>
             <label for="focus">Site</label>
             <select id="focus"></select>
           </div>
@@ -109,7 +114,7 @@
             </div>
           </div>
         </div>
-        <p class="caption">3D mission-control dome scaffold. Terrain extrusion, sightlines, and celestial bodies arrive in the next steps. Drag to orbit, scroll to zoom.</p>
+        <p class="caption">Realistic 3D lunar crater dome extruded from real LOLA DEM laser altimetry. Photorealistic Sun with coronal lens flare & SPICE trajectory line. Earth with atmospheric glow & libration loop. Drag to orbit, scroll to zoom.</p>
 
         <h3 class="sub-head-sky">2D Horizon Skyline & Ephemeris Chart</h3>
         <canvas id="horizon" role="img" aria-label="Horizon plot"></canvas>
