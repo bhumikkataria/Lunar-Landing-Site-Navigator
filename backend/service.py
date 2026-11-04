@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ephemeris as eph
 from .dem import DEM, synthetic_dem
-from .height_sweep import DEFAULT_HEIGHTS_M, height_sweep
+from .height_sweep import DEFAULT_HEIGHTS_M, MAX_MAST_M, height_sweep
 from .horizon import compute_horizon, horizon_info
 from .sites import Site, load_sites, make_demo_sites
 from .uncertainty import hourly_probability, mc_visibility, window_uncertainty
@@ -77,6 +77,16 @@ def _parse_day(s: str) -> np.datetime64:
         raise ServiceError(f"could not read date '{s}' (use YYYY-MM-DD)") from exc
 
 
+def _height_in_range(value) -> float:
+    try:
+        h = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ServiceError(f"height must be a number between 0 and {MAX_MAST_M:g} m") from exc
+    if not np.isfinite(h) or h < 0 or h > MAX_MAST_M:
+        raise ServiceError(f"height must be between 0 and {MAX_MAST_M:g} m")
+    return h
+
+
 class Service:
     def __init__(self, dem: DEM | None = None, sites: list[Site] | None = None,
                  ephemeris: str | None = None):
@@ -117,7 +127,7 @@ class Service:
                "ephemeris": ephemeris, "ephemeris_backend": self.ephemeris,
                "sites": [s.to_dict() for s in self.sites.values()],
                "objectives": list(OBJECTIVES), "default_heights_m": list(DEFAULT_HEIGHTS_M),
-               "warnings": warnings}
+               "max_height_m": MAX_MAST_M, "warnings": warnings}
         if self.ephemeris == EPHEMERIS_SPICE:
             out["ephemeris_kernels"] = [Path(k).name for k in self._kernels]
         return out
@@ -129,7 +139,8 @@ class Service:
 
     # --------------------------------------------------------------- horizon
     def horizon(self, site_id: str, height_m: float = 0.0):
-        key = (site_id, float(height_m))
+        height_m = _height_in_range(height_m)
+        key = (site_id, height_m)
         if key not in self._hor:
             s = self.site(site_id)
             self._hor[key] = compute_horizon(self.dem, s.lat, s.lon, height_m, RMAX_M, 1.0)
@@ -144,6 +155,8 @@ class Service:
         if step_min < 30:
             raise ServiceError("step must be at least 0.5 hours")
         n = int((t1 - t0) / np.timedelta64(step_min, "m"))
+        if n < 1:
+            raise ServiceError("date range is shorter than one step; widen the range or reduce the step")
         if n > MAX_SAMPLES:
             raise ServiceError(f"range too long for this step (max {MAX_SAMPLES} samples); "
                                "shorten the range or increase the step")
@@ -227,10 +240,19 @@ class Service:
                step_h=1.0) -> dict:
         ser = self.series(site_id, start, end, step_h)
         s = self.site(site_id)
+        raw = DEFAULT_HEIGHTS_M if heights is None else heights
+        if isinstance(raw, (int, float)):
+            raw = (raw,)
+        try:
+            checked = tuple(_height_in_range(h) for h in raw)
+        except TypeError as exc:
+            raise ServiceError("heights must be a list of numbers") from exc
+        if not checked:
+            raise ServiceError("provide at least one height")
         sl = None
         if window_start is not None and window_end is not None:
             sl = slice(int(window_start), int(window_end))
-        out = height_sweep(self.dem, s.lat, s.lon, ser, tuple(heights or DEFAULT_HEIGHTS_M),
+        out = height_sweep(self.dem, s.lat, s.lon, ser, checked,
                            sl, RMAX_M, 1.0, ser["step_h"])
         out["site_id"] = site_id
         return out

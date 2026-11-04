@@ -77,6 +77,8 @@ def h_copilot(svc, b):
     msg = str(b.get("message", "")).strip()
     if not msg:
         raise ServiceError("type a question first")
+    if len(msg) > 1000:
+        raise ServiceError("question too long (max 1000 characters)")
     mode = b.get("mode") if b.get("mode") in ("planner", "public") else "planner"
     return run_copilot(svc, msg, mode)
 
