@@ -104,6 +104,12 @@ def test_window_finder_picks_the_overlap():
     w = res[0]
     assert 100 <= w["start_index"] <= 102
     assert w["metrics"]["both_pct"] == pytest.approx(100.0)
+    # A window ending at the last sample still reports its exclusive end time.
+    n, L = 48, 48
+    full = np.datetime64("2027-01-01T00:00") + np.arange(n) * np.timedelta64(1, "h")
+    edge = find_windows(full, np.ones(n, bool), np.ones(n, bool), duration_h=L, top_n=1)[0]
+    assert edge["start_index"] == 0 and edge["end_index"] == n
+    assert edge["end"] == "2027-01-03T00:00"
 
 
 def test_window_finder_battery_constraint():
@@ -143,6 +149,11 @@ def test_height_sweep_finds_the_flip():
     j = out["biggest_jumps"]["power_pct"]
     assert j["is_flip"] and j["from_height_m"] == 1.0 and j["to_height_m"] == 2.0
     assert not out["biggest_jumps"]["comms_pct"]["is_flip"]
+    # One height has no adjacent pair; it must still return a usable row and jump summary.
+    one = height_sweep(dem, SITE_LAT, SITE_LON, series, heights=(5,), rmax_m=5000)
+    assert len(one["rows"]) == 1 and one["rows"][0]["height_m"] == 5.0
+    assert one["biggest_jumps"]["power_pct"]["is_flip"] is False
+    assert one["biggest_jumps"]["power_pct"]["jump_pct"] == 0.0
 
 
 def test_uncertainty_labels():
@@ -168,7 +179,7 @@ def test_synthetic_dem_is_labelled():
 
 def test_proj_south_polar_conversion_matches_projection_math():
     """Build the same smooth field on a PROJ-style grid and on our grid; conversion must agree."""
-    from backend.dem import from_proj_south_polar
+    from backend.dem import from_proj_south_polar, from_proj_south_polar_area
 
     n, px = 301, 1000.0
     c = (n - 1) / 2
@@ -187,6 +198,11 @@ def test_proj_south_polar_conversion_matches_projection_math():
     z_std = field(lat_s, lon_s)
 
     dem = from_proj_south_polar(z_std, px)
+    # For an odd grid with the pole at a pixel centre, the area-aware converter must
+    # reproduce the older function exactly; it additionally supports half-pixel poles.
+    dem_area = from_proj_south_polar_area(z_std, px, c, c, c * px)
+    assert dem_area.z.shape == dem.z.shape
+    assert np.allclose(dem_area.z, dem.z, atol=1e-6)
     # our grid: x = rho*cos(lon), y = rho*sin(lon); col = cx + x/px, row = cy - y/px
     x_m, y_m = (cc - dem.cx) * px, (dem.cy - rr) * px
     lon_m = np.degrees(np.arctan2(y_m, x_m)) % 360

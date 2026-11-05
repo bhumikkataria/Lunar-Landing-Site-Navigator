@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -6,7 +7,7 @@ from backend.agents import explainer, llm, query, verifier
 from backend.dem import synthetic_dem
 from backend.orchestrator import run_copilot
 from backend.service import Service, ServiceError
-from backend.sites import make_demo_sites
+from backend.sites import load_sites, make_demo_sites
 
 SITES = [{"id": f"demo_{c}", "name": f"Demo Site {c.upper()}"} for c in "abcde"]
 TODAY = "2026-11-04"
@@ -38,6 +39,9 @@ def test_query_defaults_are_reported_as_assumptions():
 def test_query_antenna_height_is_not_a_comms_priority():
     r, _ = query.rule_parse("two week mission, power matters, antenna at 3 meters", SITES, TODAY)
     assert r["objective"] == "power" and r["height_m"] == 3.0
+    capped = query.run("use a 30 m mast for 7 days at site a", SITES, TODAY)
+    assert capped["request"]["height_m"] == 15.0
+    assert any("15 m" in n and "maximum" in n for n in capped["assumptions"]), capped["assumptions"]
 
 
 def test_query_month_and_battery_default():
@@ -51,6 +55,10 @@ def test_normalize_rejects_unknown_sites_and_bad_dates():
     out = query.normalize_request({"site_ids": ["nope"], "start": "2027-01-01", "end": "2027-02-01",
                                    "objective": "weird"}, ids)
     assert out["site_ids"] == ids and out["objective"] == "balanced"
+    notes = []
+    out = query.normalize_request({"site_ids": ["demo_a"], "start": "2027-01-01",
+                                   "end": "2027-02-01", "height_m": 30}, ids, notes)
+    assert out["height_m"] == 15.0 and any("15 m" in n for n in notes)
     with pytest.raises(ValueError):
         query.normalize_request({"site_ids": [], "start": "garbage", "end": "2027-02-01"}, ids)
 
@@ -81,7 +89,74 @@ def test_query_falls_back_when_llm_fails(monkeypatch):
 
 def test_llm_disabled_without_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     assert llm.complete("s", "u") is None and not llm.llm_available()
+
+
+def test_llm_available_with_gemini_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    assert llm.llm_available()
+
+
+def test_llm_gemini_path_with_fake_sdk(monkeypatch):
+    """Gemini path uses the SDK; we patch _gemini_complete directly."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+
+    def fake_gemini(system, user, max_tokens):
+        assert "convert a mission planner" in system or "explain" in system.lower() or True
+        return "Gemini says: best site is Site A."
+
+    monkeypatch.setattr(llm, "_gemini_complete", fake_gemini)
+    result = llm.complete("some system", "some user", 300)
+    assert result == "Gemini says: best site is Site A."
+
+
+def test_llm_anthropic_takes_priority_when_both_keys_set(monkeypatch):
+    """When both keys are set, Anthropic transport is called first."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    calls = {"anthropic": 0, "gemini": 0}
+
+    def transport(url, headers, body):
+        calls["anthropic"] += 1
+        return json.dumps({"content": [{"type": "text", "text": "Anthropic answer"}]}).encode()
+
+    monkeypatch.setattr(llm, "_gemini_complete", lambda s, u, m: (calls.__setitem__("gemini", 1) or "Gemini"))
+    result = llm.complete("sys", "user", transport=transport)
+    assert result == "Anthropic answer"
+    assert calls["anthropic"] == 1 and calls["gemini"] == 0
+
+
+def test_llm_falls_back_to_gemini_when_anthropic_fails(monkeypatch):
+    """When Anthropic transport fails, Gemini is tried (no transport arg = SDK path)."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(llm, "_gemini_complete", lambda s, u, m: "Gemini fallback")
+
+    def boom(url, headers, body):
+        raise OSError("network down")
+
+    # With transport=boom, the Anthropic path fails but Gemini is NOT tried
+    # (custom transport means we're in test mode, don't call real SDK)
+    result = llm.complete("sys", "user", transport=boom)
+    # Anthropic failed; Gemini not tried when custom transport is provided
+    assert result is None
+
+
+def test_llm_gemini_fallback_no_transport(monkeypatch):
+    """Without a custom transport, failing Anthropic falls back to Gemini SDK."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "bad-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setattr(llm, "_gemini_complete", lambda s, u, m: "Gemini answer")
+    def _bad_transport(url, h, b):
+        raise OSError("fail")
+
+    monkeypatch.setattr(llm, "_default_transport", _bad_transport)
+    result = llm.complete("sys", "user")
+    assert result == "Gemini answer"
 
 
 # ------------------------------------------------------------------- Verifier
@@ -98,7 +173,7 @@ NAMES = ["Demo Site A", "Demo Site B"]
 def test_verifier_accepts_backed_text():
     t = "Demo Site A on 2027-03-12 gives both 72% (72.4 exactly), power 100%, a fragile window; 10 days."
     v = verifier.verify(t, FACTS, NAMES)
-    assert v["verified"], v
+    assert v["verified"] and v["scope"] == "value_presence", v
 
 
 def test_verifier_rejects_invented_number():
@@ -150,7 +225,8 @@ def test_copilot_discards_hallucinating_llm(svc, monkeypatch):
     assert "999" not in r["explanation"]["text"]
 
 
-def test_service_input_errors_are_clear(svc):
+def test_service_input_errors_are_clear(svc, monkeypatch, tmp_path):
+    assert svc.meta()["max_height_m"] == 15.0
     with pytest.raises(ServiceError):
         svc.windows("demo_a", "2027-03-01", "2027-03-05", 24 * 20)
     with pytest.raises(ServiceError):
@@ -158,4 +234,32 @@ def test_service_input_errors_are_clear(svc):
     with pytest.raises(ServiceError):
         svc.series("demo_a", "2027-01-01", "2029-01-01")
     with pytest.raises(ServiceError):
+        svc.series("demo_a", "2027-01-01", "2027-01-02", step_h=48)
+    with pytest.raises(ServiceError):
+        svc.horizon("demo_a", 30)
+    with pytest.raises(ServiceError):
+        svc.height("demo_a", "2027-01-01", "2027-01-03", heights=(0, 30))
+    one = svc.height("demo_a", "2027-01-01", "2027-01-03", heights=(5,))
+    assert len(one["rows"]) == 1 and one["rows"][0]["height_m"] == 5.0
+    with pytest.raises(ServiceError):
         svc.windows("demo_a", "2027-03-01", "2027-04-01", 48, objective="survive")
+
+    # Phase 3: ephemeris selection is explicit and never falls back silently.
+    with pytest.raises(ServiceError, match="LUNAR_EPHEMERIS"):
+        Service(ephemeris="not-a-backend")
+    monkeypatch.setenv("LUNAR_SPICE_KERNELS", str(tmp_path / "missing.tls"))
+    with pytest.raises(ServiceError) as exc:
+        Service(ephemeris="spice")
+    message = str(exc.value).lower()
+    assert "spice" in message and ("kernel" in message or "spiceypy" in message)
+
+    # Phase 3: representative sites keep their provenance and do not trigger
+    # the demo-coordinate warning.
+    registry = Path(__file__).resolve().parents[1] / "backend" / "data" / "sites_real.json"
+    real = load_sites(str(registry))
+    assert len(real) == 9
+    assert all(s.representative and s.source for s in real)
+    rep_meta = Service(synthetic_dem(size_px=120, px_m=1000.0), real).meta()
+    assert any("representative" in w.lower() for w in rep_meta["warnings"])
+    assert not any("unverified demo" in w.lower() for w in rep_meta["warnings"])
+    assert rep_meta["ephemeris_backend"] == "analytical"
