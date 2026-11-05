@@ -199,7 +199,7 @@ Quantifies the sensitivity of mission planning decisions to errors in digital el
   5. *Mons Mouton*
   6. *Nobile Rim 1*
   7. *Nobile Rim 2*
-  8. *de Gerlache Rim 1*
+  8. *Slater Plain*
   9. *de Gerlache Rim 2*
 * **Shoelace Centroid Derivation:** Candidate sites are derived from official 5-point region polygon coordinates (`A3_9regions-lonlat-simplified.geojson`). The generator computes projected shoelace centroids, verifies via ray-casting that each centroid falls strictly inside its region polygon, and verifies that the computed projected polygon area matches the source `Area_km2` within $1.0\%$.
 * **Provenance Tracking:** Every site carries a `representative: true` flag and explicit source metadata, clearly indicating that the point represents an interior location within an official candidate region rather than a certified landing touchdown point.
@@ -307,7 +307,7 @@ The frontend is an engineering-grade Mission Control interface implemented in st
 |    Extruded LOLA crater ridges                  |  [*] Peak Near Cabeus B    [*] Haworth           |
 |    Animated SPICE Sun & Earth orbits            |  [*] Malapert Massif       [*] Mons Mouton       |
 |    Occlusion raycast lines-of-sight             |  [*] Nobile Rim 1          [*] Nobile Rim 2      |
-|    Lander halo: Green/Amber/Blue/Red            |  [*] de Gerlache Rim 1     [*] de Gerlache Rim 2 |
+|    Lander halo: Green/Amber/Blue/Red            |  [*] Slater Plain          [*] de Gerlache Rim 2 |
 |    Camera presets: Tactical / POV / Top-Down    |                                                  |
 |                                                 |  Mission Constraints:                            |
 |  - 2D Skyline & 360 Panorama Canvas:            |  Start Date: [ 2027-01-01 ]                      |
